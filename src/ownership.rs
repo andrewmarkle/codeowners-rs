@@ -124,6 +124,7 @@ impl Ownership {
             mappers: self.mappers(),
             file_generator: FileGenerator { mappers: self.mappers() },
             executable_name: self.project.executable_name.clone(),
+            allow_ownership_override: self.project.allow_ownership_override,
         };
 
         validator.validate()
@@ -187,7 +188,75 @@ impl Ownership {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common_test::tests::build_ownership_with_all_mappers;
+    use crate::common_test::tests::{TestConfig, TestProjectFile, build_ownership, build_ownership_with_all_mappers};
+    use indoc::indoc;
+    use tempfile::tempdir;
+
+    fn build_annotation_over_directory(allow_override: bool) -> Result<Ownership, Box<dyn Error>> {
+        let base_yml = indoc! {"
+            ---
+            owned_globs:
+              - \"app/**/*.rb\"
+            unowned_globs:
+              - config/code_ownership.yml
+            team_file_glob:
+              - config/teams/**/*.yml
+        "};
+        let yml = if allow_override {
+            format!("{base_yml}allow_ownership_override: true\n")
+        } else {
+            base_yml.to_owned()
+        };
+
+        let temp_dir = tempdir()?;
+        let mut test_config = TestConfig::new(
+            temp_dir.path().to_path_buf(),
+            vec![
+                TestProjectFile {
+                    relative_path: "app/foo/.codeowner".to_owned(),
+                    content: "Bar\n".to_owned(),
+                },
+                TestProjectFile {
+                    relative_path: "app/foo/thing.rb".to_owned(),
+                    content: "# @team Foo\nclass Thing\nend\n".to_owned(),
+                },
+            ],
+        );
+        test_config.code_ownership_config_yml = yml;
+        // The generated CODEOWNERS would list both owners and make the stale-file
+        // check noisy; this test targets the multiple-owners rule only.
+        test_config.generate_codeowners = false;
+        build_ownership(test_config)
+    }
+
+    #[test]
+    fn test_annotation_over_directory_errors_without_override() -> Result<(), Box<dyn Error>> {
+        let ownership = build_annotation_over_directory(false)?;
+        let errors = ownership.validate().expect_err("expected validation to fail when override is off");
+        assert!(
+            errors.to_string().contains("multiple"),
+            "expected a multiple-owners error, got: {errors}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_annotation_over_directory_ok_with_override() -> Result<(), Box<dyn Error>> {
+        let ownership = build_annotation_over_directory(true)?;
+        let file_owners = ownership.for_file(Path::new("app/foo/thing.rb")).unwrap();
+        let top = file_owners
+            .iter()
+            .min_by_key(|owner| owner.sources.iter().map(Source::priority).min().unwrap_or(u8::MAX))
+            .expect("expected at least one owner");
+        assert_eq!(top.team.name, "Foo", "annotation should win over the directory owner");
+
+        let validation_errors = ownership.validate().err();
+        let has_multiple_owner_error = validation_errors
+            .map(|errors| errors.to_string().contains("multiple"))
+            .unwrap_or(false);
+        assert!(!has_multiple_owner_error, "override on should not raise a multiple-owners error");
+        Ok(())
+    }
 
     #[test]
     fn test_for_file_owner() -> Result<(), Box<dyn Error>> {

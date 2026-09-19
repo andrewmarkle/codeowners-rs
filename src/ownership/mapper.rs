@@ -62,6 +62,20 @@ impl Source {
             _ => 0,
         }
     }
+
+    /// Ownership confidence, lowest number wins. A file annotation is the most
+    /// specific signal and overrides a directory owner, which overrides a
+    /// package owner, and so on.
+    pub fn priority(&self) -> u8 {
+        match self {
+            Source::AnnotatedFile => 0,
+            Source::Directory(_) => 1,
+            Source::Package(_, _) => 2,
+            Source::TeamGlob(_) => 3,
+            Source::TeamGem => 4,
+            Source::TeamYml => 5,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq)]

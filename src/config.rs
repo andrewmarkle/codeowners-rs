@@ -31,6 +31,16 @@ pub struct Config {
 
     #[serde(default = "default_codeowners_path")]
     pub codeowners_path: String,
+
+    /// When true, a file with several owners is not a conflict as long as one
+    /// source outranks the rest (see `Source::priority`). The highest-priority
+    /// owner wins, which lets a file annotation override a directory owner.
+    #[serde(default = "bool_false")]
+    pub allow_ownership_override: bool,
+}
+
+fn bool_false() -> bool {
+    false
 }
 
 #[allow(dead_code)]

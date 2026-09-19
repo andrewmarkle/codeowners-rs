@@ -18,6 +18,7 @@ pub struct Project {
     pub directory_codeowner_files: Vec<DirectoryCodeownersFile>,
     pub teams_by_name: HashMap<String, Team>,
     pub executable_name: String,
+    pub allow_ownership_override: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -50,11 +51,15 @@ impl Team {
         Ok(Self {
             path: absolute_path.to_owned(),
             name: deserializer.name,
-            github_team: deserializer.github.team,
+            github_team: deserializer.github.as_ref().map(|g| g.team.clone()).unwrap_or_default(),
             owned_globs: deserializer.owned_globs,
             subtracted_globs: deserializer.subtracted_globs,
             owned_gems: deserializer.ruby.map(|ruby| ruby.owned_gems).unwrap_or_default(),
-            avoid_ownership: deserializer.github.do_not_add_to_codeowners_file,
+            avoid_ownership: deserializer
+                .github
+                .as_ref()
+                .map(|g| g.do_not_add_to_codeowners_file)
+                .unwrap_or(false),
         })
     }
 }
@@ -131,7 +136,8 @@ pub mod deserializers {
     #[derive(Deserialize)]
     pub struct Team {
         pub name: String,
-        pub github: Github,
+        #[serde(default)]
+        pub github: Option<Github>,
         pub ruby: Option<Ruby>,
 
         #[serde(default = "empty_string_vec")]
@@ -222,6 +228,7 @@ mod tests {
             directory_codeowner_files: vec![],
             teams_by_name: HashMap::new(),
             executable_name: "codeowners generate".to_string(),
+            allow_ownership_override: false,
         };
 
         let map = project.vendored_gem_by_name();

@@ -15,13 +15,14 @@ use tracing::instrument;
 use super::file_generator::FileGenerator;
 use super::file_owner_finder::FileOwnerFinder;
 use super::file_owner_finder::Owner;
-use super::mapper::{Mapper, OwnerMatcher, TeamName};
+use super::mapper::{Mapper, OwnerMatcher, Source, TeamName};
 
 pub struct Validator {
     pub project: Arc<Project>,
     pub mappers: Vec<Box<dyn Mapper>>,
     pub file_generator: FileGenerator,
     pub executable_name: String,
+    pub allow_ownership_override: bool,
 }
 
 #[derive(Debug)]
@@ -116,7 +117,7 @@ impl Validator {
 
             if owners.is_empty() {
                 validation_errors.push(Error::FileWithoutOwner { path: relative_path })
-            } else if owners.len() > 1 {
+            } else if owners.len() > 1 && !self.resolves_by_priority(&owners) {
                 validation_errors.push(Error::FileWithMultipleOwners {
                     path: relative_path,
                     owners,
@@ -125,6 +126,29 @@ impl Validator {
         }
 
         validation_errors
+    }
+
+    /// With `allow_ownership_override`, several owners are not a conflict as
+    /// long as one outranks the rest. The top-priority source (for example a
+    /// file annotation over a directory owner) wins, so this is a conflict only
+    /// when two owners tie at the highest priority.
+    fn resolves_by_priority(&self, owners: &[Owner]) -> bool {
+        if !self.allow_ownership_override {
+            return false;
+        }
+
+        let best_priority = owners
+            .iter()
+            .map(|owner| owner.sources.iter().map(Source::priority).min().unwrap_or(u8::MAX))
+            .min()
+            .unwrap_or(u8::MAX);
+
+        let winners = owners
+            .iter()
+            .filter(|owner| owner.sources.iter().map(Source::priority).min().unwrap_or(u8::MAX) == best_priority)
+            .count();
+
+        winners == 1
     }
 
     #[instrument(name = "validate_codeowners_file", level = "debug", skip_all)]

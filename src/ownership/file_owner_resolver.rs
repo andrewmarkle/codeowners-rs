@@ -89,8 +89,8 @@ pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path) 
     // This is simply matching the order of behavior of the original codeowners CLI
     if file_owners.len() > 1 {
         file_owners.sort_by(|a, b| {
-            let priority_a = a.sources.iter().map(source_priority).min().unwrap_or(u8::MAX);
-            let priority_b = b.sources.iter().map(source_priority).min().unwrap_or(u8::MAX);
+            let priority_a = a.sources.iter().map(Source::priority).min().unwrap_or(u8::MAX);
+            let priority_b = b.sources.iter().map(Source::priority).min().unwrap_or(u8::MAX);
             priority_a.cmp(&priority_b).then_with(|| a.team.name.cmp(&b.team.name))
         });
     }
@@ -264,18 +264,6 @@ fn vendored_gem_owner(relative_file_path: &Path, config: &Config, teams: &[Team]
     None
 }
 
-fn source_priority(source: &Source) -> u8 {
-    match source {
-        // Highest confidence first
-        Source::AnnotatedFile => 0,
-        Source::Directory(_) => 1,
-        Source::Package(_, _) => 2,
-        Source::TeamGlob(_) => 3,
-        Source::TeamGem => 4,
-        Source::TeamYml => 5,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +283,7 @@ mod tests {
             ignore_dirs: vec![],
             executable_name: "codeowners".to_string(),
             codeowners_path: ".github".to_string(),
+            allow_ownership_override: false,
         }
     }
 
