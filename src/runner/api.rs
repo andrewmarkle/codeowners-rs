@@ -41,7 +41,13 @@ pub fn crosscheck_owners(run_config: &RunConfig) -> RunResult {
 pub fn owners_for_file(run_config: &RunConfig, file_path: &str) -> Result<Vec<FileOwner>, Report<Error>> {
     let config = config_from_run_config(run_config)?;
     use crate::ownership::file_owner_resolver::find_file_owners;
-    let owners = find_file_owners(&run_config.project_root, &config, std::path::Path::new(file_path)).map_err(Error::Io)?;
+    let owners = find_file_owners(
+        &run_config.project_root,
+        &config,
+        std::path::Path::new(file_path),
+        run_config.no_cache,
+    )
+    .map_err(Error::Io)?;
     Ok(owners)
 }
 
@@ -90,7 +96,12 @@ fn for_file_optimized(run_config: &RunConfig, file_path: &str, json: bool) -> Ru
     };
 
     use crate::ownership::file_owner_resolver::find_file_owners;
-    let file_owners = match find_file_owners(&run_config.project_root, &config, std::path::Path::new(file_path)) {
+    let file_owners = match find_file_owners(
+        &run_config.project_root,
+        &config,
+        std::path::Path::new(file_path),
+        run_config.no_cache,
+    ) {
         Ok(v) => v,
         Err(err) => {
             return RunResult::from_io_error(Error::Io(err), json);

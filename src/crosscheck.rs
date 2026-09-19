@@ -60,7 +60,7 @@ fn owners_for_file(path: &Path, run_config: &RunConfig, config: &Config) -> Resu
         .map_err(|e| e.to_string())?
         .map(|t| t.name);
 
-    let fast_owners = find_file_owners(&run_config.project_root, config, Path::new(&file_path_str))?;
+    let fast_owners = find_file_owners(&run_config.project_root, config, Path::new(&file_path_str), run_config.no_cache)?;
     let fast_display = match fast_owners.len() {
         0 => "Unowned".to_string(),
         1 => fast_owners[0].team.name.clone(),

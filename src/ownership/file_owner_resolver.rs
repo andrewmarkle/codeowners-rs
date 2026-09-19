@@ -1,7 +1,8 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    path::Path,
+    path::{Path, PathBuf},
+    sync::{Arc, OnceLock, RwLock},
 };
 
 use fast_glob::glob_match;
@@ -11,7 +12,7 @@ use crate::{config::Config, project::Team, project_file_builder::build_project_f
 
 use super::{FileOwner, mapper::Source};
 
-pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path) -> Result<Vec<FileOwner>, String> {
+pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path, no_cache: bool) -> Result<Vec<FileOwner>, String> {
     let absolute_file_path = if file_path.is_absolute() {
         file_path.to_path_buf()
     } else {
@@ -19,7 +20,7 @@ pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path) 
     };
     let relative_file_path = crate::path_utils::relative_to_buf(project_root, &absolute_file_path);
 
-    let teams = load_teams(project_root, &config.team_file_glob)?;
+    let teams = load_teams(project_root, &config.team_file_glob, no_cache)?;
     let teams_by_name = build_teams_by_name_map(&teams);
 
     let mut sources_by_team: HashMap<String, Vec<Source>> = HashMap::new();
@@ -51,7 +52,7 @@ pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path) 
     }
 
     if let Some(rel_str) = relative_file_path.to_str() {
-        for team in &teams {
+        for team in teams.iter() {
             let subtracts: HashSet<&str> = team.subtracted_globs.iter().map(|s| s.as_str()).collect();
             for owned_glob in &team.owned_globs {
                 if glob_match(owned_glob, rel_str) && !subtracts.iter().any(|sub| glob_match(sub, rel_str)) {
@@ -64,7 +65,7 @@ pub fn find_file_owners(project_root: &Path, config: &Config, file_path: &Path) 
         }
     }
 
-    for team in &teams {
+    for team in teams.iter() {
         let team_rel = crate::path_utils::relative_to_buf(project_root, &team.path);
         if team_rel == relative_file_path {
             sources_by_team.entry(team.name.clone()).or_default().push(Source::TeamYml);
@@ -107,7 +108,29 @@ fn build_teams_by_name_map(teams: &[Team]) -> HashMap<String, Team> {
     map
 }
 
-fn load_teams(project_root: &Path, team_file_globs: &[String]) -> std::result::Result<Vec<Team>, String> {
+type TeamCacheKey = (PathBuf, Vec<String>);
+
+fn team_cache() -> &'static RwLock<HashMap<TeamCacheKey, Arc<Vec<Team>>>> {
+    static CACHE: OnceLock<RwLock<HashMap<TeamCacheKey, Arc<Vec<Team>>>>> = OnceLock::new();
+    CACHE.get_or_init(|| RwLock::new(HashMap::new()))
+}
+
+fn load_teams(project_root: &Path, team_file_globs: &[String], no_cache: bool) -> std::result::Result<Arc<Vec<Team>>, String> {
+    if no_cache {
+        return Ok(Arc::new(load_teams_uncached(project_root, team_file_globs)?));
+    }
+
+    let key: TeamCacheKey = (project_root.to_path_buf(), team_file_globs.to_vec());
+    if let Some(teams) = team_cache().read().unwrap().get(&key) {
+        return Ok(teams.clone());
+    }
+
+    let teams = Arc::new(load_teams_uncached(project_root, team_file_globs)?);
+    team_cache().write().unwrap().insert(key, teams.clone());
+    Ok(teams)
+}
+
+fn load_teams_uncached(project_root: &Path, team_file_globs: &[String]) -> std::result::Result<Vec<Team>, String> {
     let mut teams: Vec<Team> = Vec::new();
     for glob_str in team_file_globs {
         let absolute_glob = project_root.join(glob_str).to_string_lossy().into_owned();
@@ -389,6 +412,36 @@ mod tests {
             }
             _ => panic!("expected Package source for js"),
         }
+    }
+
+    #[test]
+    fn test_load_teams_caches_per_process_and_no_cache_reads_fresh() {
+        let td = tempdir().unwrap();
+        let project_root = td.path();
+        let config = build_config_for_temp("frontend/**/*", "packs/**/*", "vendored");
+
+        std::fs::create_dir_all(project_root.join("config/teams")).unwrap();
+        std::fs::create_dir_all(project_root.join("app")).unwrap();
+        std::fs::write(project_root.join("app/x.rb"), "puts :x\n").unwrap();
+
+        let team_yml = project_root.join("config/teams/team.yml");
+        std::fs::write(&team_yml, "name: Alpha\nowned_globs:\n  - \"app/**/*\"\n").unwrap();
+
+        let file = Path::new("app/x.rb");
+
+        // First cached read resolves to Alpha and populates the process cache.
+        let owners = find_file_owners(project_root, &config, file, false).unwrap();
+        assert_eq!(owners.len(), 1);
+        assert_eq!(owners[0].team.name, "Alpha");
+
+        // Rewrite the team file. A cached read must not see the change.
+        std::fs::write(&team_yml, "name: Beta\nowned_globs:\n  - \"app/**/*\"\n").unwrap();
+        let cached = find_file_owners(project_root, &config, file, false).unwrap();
+        assert_eq!(cached[0].team.name, "Alpha", "cached read should return the stale team");
+
+        // A no_cache read bypasses the cache and sees the new team.
+        let fresh = find_file_owners(project_root, &config, file, true).unwrap();
+        assert_eq!(fresh[0].team.name, "Beta", "no_cache read should return the fresh team");
     }
 
     #[test]

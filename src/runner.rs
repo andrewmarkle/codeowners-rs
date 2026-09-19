@@ -273,7 +273,13 @@ impl Runner {
 
     pub fn owners_for_file(&self, file_path: &str) -> Result<Vec<FileOwner>, Report<Error>> {
         use crate::ownership::file_owner_resolver::find_file_owners;
-        let owners = find_file_owners(&self.run_config.project_root, &self.config, std::path::Path::new(file_path)).map_err(Error::Io)?;
+        let owners = find_file_owners(
+            &self.run_config.project_root,
+            &self.config,
+            std::path::Path::new(file_path),
+            self.run_config.no_cache,
+        )
+        .map_err(Error::Io)?;
         Ok(owners)
     }
 
