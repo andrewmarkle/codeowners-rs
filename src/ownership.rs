@@ -1,6 +1,7 @@
 use file_owner_finder::FileOwnerFinder;
 use itertools::Itertools;
 use mapper::{OwnerMatcher, Source, TeamName};
+use serde::Serialize;
 use std::{
     error::Error,
     fmt::{self, Display},
@@ -94,7 +95,7 @@ impl Default for FileOwner {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone, Serialize)]
 pub struct Entry {
     pub path: String,
     pub github_team: String,
@@ -107,6 +108,16 @@ impl Entry {
         let line = format!("/{} {}", self.path, self.github_team);
         if self.disabled { format!("# {}", line) } else { line }
     }
+}
+
+/// The ownership entries a single mapper produces, grouped under the mapper's
+/// display name. This is the structured form of one section of the generated
+/// CODEOWNERS file. Clients that need a per-mapper map of glob to owner (for
+/// example a custom CODEOWNERS generator) read this instead of parsing the file.
+#[derive(Debug, Clone, Serialize)]
+pub struct MapperOwnership {
+    pub mapper: String,
+    pub entries: Vec<Entry>,
 }
 
 impl Ownership {
@@ -169,6 +180,21 @@ impl Ownership {
         info!("generating codeowners file");
         let file_generator = FileGenerator { mappers: self.mappers() };
         file_generator.generate_file()
+    }
+
+    /// Returns the ownership entries each mapper produces, in mapper order. This
+    /// is the same data the CODEOWNERS generator writes, but structured per
+    /// mapper instead of joined into one file, so a caller can build its own
+    /// output (for example a GitLab-flavored CODEOWNERS file).
+    #[instrument(level = "debug", skip_all)]
+    pub fn ownership_entries(&self) -> Vec<MapperOwnership> {
+        self.mappers()
+            .iter()
+            .map(|mapper| MapperOwnership {
+                mapper: mapper.name(),
+                entries: mapper.entries(),
+            })
+            .collect()
     }
 
     #[instrument(name = "mapper_build", level = "debug", skip_all)]
@@ -289,6 +315,29 @@ mod tests {
         let ownership = build_ownership_with_all_mappers()?;
         let team_ownership = ownership.for_team("Nope");
         assert!(team_ownership.is_err(), "Team not found");
+        Ok(())
+    }
+
+    #[test]
+    fn test_ownership_entries_groups_by_mapper() -> Result<(), Box<dyn Error>> {
+        let ownership = build_ownership_with_all_mappers()?;
+        let groups = ownership.ownership_entries();
+
+        // Every mapper is represented, in mapper order.
+        let names: Vec<String> = groups.iter().map(|group| group.mapper.clone()).collect();
+        assert!(names.contains(&"Owner in .codeowner".to_string()));
+
+        // The directory mapper reports its owner as a `/**/**` glob with the team name.
+        let directory_group = groups
+            .iter()
+            .find(|group| group.mapper == "Owner in .codeowner")
+            .expect("expected a directory mapper group");
+        let consumers = directory_group
+            .entries
+            .iter()
+            .find(|entry| entry.path == "app/consumers/**/**")
+            .expect("expected the app/consumers directory entry");
+        assert_eq!(consumers.team_name, "Bar");
         Ok(())
     }
 }

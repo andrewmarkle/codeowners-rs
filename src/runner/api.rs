@@ -17,6 +17,13 @@ pub fn for_team(run_config: &RunConfig, team_name: &str) -> RunResult {
     run(run_config, |runner| runner.for_team(team_name))
 }
 
+// Returns the ownership entries grouped per mapper. This is the structured form
+// of the generated CODEOWNERS file, for callers that build their own output.
+pub fn ownership_entries(run_config: &RunConfig) -> Result<Vec<crate::ownership::MapperOwnership>, Report<Error>> {
+    let runner = super::Runner::new(run_config)?;
+    Ok(runner.ownership_entries())
+}
+
 pub fn validate(run_config: &RunConfig, file_paths: Vec<String>) -> RunResult {
     run(run_config, |runner| runner.validate(file_paths))
 }

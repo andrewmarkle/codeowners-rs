@@ -271,6 +271,10 @@ impl Runner {
         crate::crosscheck::crosscheck_owners(&self.run_config, &self.cache)
     }
 
+    pub fn ownership_entries(&self) -> Vec<crate::ownership::MapperOwnership> {
+        self.ownership.ownership_entries()
+    }
+
     pub fn owners_for_file(&self, file_path: &str) -> Result<Vec<FileOwner>, Report<Error>> {
         use crate::ownership::file_owner_resolver::find_file_owners;
         let owners = find_file_owners(
