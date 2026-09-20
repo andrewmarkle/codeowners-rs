@@ -161,6 +161,27 @@ pub mod tests {
         )
     }
 
+    pub fn build_ownership_with_root_directory_codeowner() -> Result<Ownership, Box<dyn Error>> {
+        ownership!(
+            TestProjectFile {
+                relative_path: "app/services/service_file.rb".to_owned(),
+                content: "class ServiceFile\nend\n".to_owned(),
+            },
+            TestProjectFile {
+                relative_path: "lib/unclaimed/deep_file.rb".to_owned(),
+                content: "class DeepFile\nend\n".to_owned(),
+            },
+            TestProjectFile {
+                relative_path: ".codeowner".to_owned(),
+                content: "Bar\n".to_owned(),
+            },
+            TestProjectFile {
+                relative_path: "app/services/.codeowner".to_owned(),
+                content: "Foo\n".to_owned(),
+            }
+        )
+    }
+
     pub fn build_ownership_with_directory_codeowners_with_brackets() -> Result<Ownership, Box<dyn Error>> {
         ownership!(
             TestProjectFile {
