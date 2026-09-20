@@ -326,6 +326,7 @@ impl<'a> ProjectBuilder<'a> {
             teams_by_name,
             executable_name: self.config.executable_name.clone(),
             allow_ownership_override: self.config.allow_ownership_override,
+            skip_codeowners_validation: self.config.skip_codeowners_validation,
         })
     }
 }

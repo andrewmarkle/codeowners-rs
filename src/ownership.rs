@@ -136,6 +136,7 @@ impl Ownership {
             file_generator: FileGenerator { mappers: self.mappers() },
             executable_name: self.project.executable_name.clone(),
             allow_ownership_override: self.project.allow_ownership_override,
+            skip_codeowners_validation: self.project.skip_codeowners_validation,
         };
 
         validator.validate()
@@ -281,6 +282,58 @@ mod tests {
             .map(|errors| errors.to_string().contains("multiple"))
             .unwrap_or(false);
         assert!(!has_multiple_owner_error, "override on should not raise a multiple-owners error");
+        Ok(())
+    }
+
+    fn build_stale_codeowners(skip_validation: bool) -> Result<Ownership, Box<dyn Error>> {
+        let base_yml = indoc! {"
+            ---
+            owned_globs:
+              - \"app/**/*.rb\"
+            unowned_globs:
+              - config/code_ownership.yml
+            team_file_glob:
+              - config/teams/**/*.yml
+        "};
+        let yml = if skip_validation {
+            format!("{base_yml}skip_codeowners_validation: true\n")
+        } else {
+            base_yml.to_owned()
+        };
+
+        let temp_dir = tempdir()?;
+        let mut test_config = TestConfig::new(
+            temp_dir.path().to_path_buf(),
+            vec![TestProjectFile {
+                relative_path: "app/foo/thing.rb".to_owned(),
+                content: "# @team Foo\nclass Thing\nend\n".to_owned(),
+            }],
+        );
+        test_config.code_ownership_config_yml = yml;
+        // Leave the CODEOWNERS file unwritten so the generated content is out of date.
+        test_config.generate_codeowners = false;
+        build_ownership(test_config)
+    }
+
+    #[test]
+    fn test_stale_codeowners_errors_without_skip() -> Result<(), Box<dyn Error>> {
+        let ownership = build_stale_codeowners(false)?;
+        let errors = ownership
+            .validate()
+            .expect_err("expected validation to fail when the CODEOWNERS file is stale");
+        assert!(
+            errors.to_string().contains("out of date"),
+            "expected a stale-CODEOWNERS error, got: {errors}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_stale_codeowners_ok_with_skip() -> Result<(), Box<dyn Error>> {
+        let ownership = build_stale_codeowners(true)?;
+        ownership
+            .validate()
+            .expect("skip_codeowners_validation on should skip the stale-file check");
         Ok(())
     }
 

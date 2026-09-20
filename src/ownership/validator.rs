@@ -23,6 +23,7 @@ pub struct Validator {
     pub file_generator: FileGenerator,
     pub executable_name: String,
     pub allow_ownership_override: bool,
+    pub skip_codeowners_validation: bool,
 }
 
 #[derive(Debug)]
@@ -47,8 +48,10 @@ impl Validator {
         debug!("validate_file_ownership");
         validation_errors.append(&mut self.validate_file_ownership());
 
-        debug!("validate_codeowners_file");
-        validation_errors.append(&mut self.validate_codeowners_file());
+        if !self.skip_codeowners_validation {
+            debug!("validate_codeowners_file");
+            validation_errors.append(&mut self.validate_codeowners_file());
+        }
 
         if validation_errors.is_empty() {
             Ok(())

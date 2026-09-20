@@ -37,6 +37,12 @@ pub struct Config {
     /// owner wins, which lets a file annotation override a directory owner.
     #[serde(default = "bool_false")]
     pub allow_ownership_override: bool,
+
+    /// When true, skip the check that the generated CODEOWNERS file matches the
+    /// file on disk. Use this when the project manages its own CODEOWNERS file
+    /// (for example a GitLab-flavored one) instead of the gem's generated file.
+    #[serde(default = "bool_false")]
+    pub skip_codeowners_validation: bool,
 }
 
 fn bool_false() -> bool {

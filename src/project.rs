@@ -19,6 +19,7 @@ pub struct Project {
     pub teams_by_name: HashMap<String, Team>,
     pub executable_name: String,
     pub allow_ownership_override: bool,
+    pub skip_codeowners_validation: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -229,6 +230,7 @@ mod tests {
             teams_by_name: HashMap::new(),
             executable_name: "codeowners generate".to_string(),
             allow_ownership_override: false,
+            skip_codeowners_validation: false,
         };
 
         let map = project.vendored_gem_by_name();

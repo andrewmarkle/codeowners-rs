@@ -307,6 +307,7 @@ mod tests {
             executable_name: "codeowners".to_string(),
             codeowners_path: ".github".to_string(),
             allow_ownership_override: false,
+            skip_codeowners_validation: false,
         }
     }
 
