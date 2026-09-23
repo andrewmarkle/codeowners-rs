@@ -61,7 +61,7 @@ fn test_validate() -> Result<(), Box<dyn Error>> {
      owner: Payroll
       - Owner specified in `ruby/app/services/.codeowner`
 
-    Found invalid team annotations
+    Found invalid team references
     - ruby/app/models/blockchain.rb is referencing an invalid team - 'Web3'
 
     Some files are missing ownership
